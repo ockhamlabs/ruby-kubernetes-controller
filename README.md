@@ -32,6 +32,23 @@ Or install it yourself as:
 
 #### For usage instructions please see our [Documentation][DOCUMENTATION]
 
+### MCP Server Example
+
+An example management server is provided in `bin/mcp_server`. It uses
+Ruby on Rails to expose HTTP endpoints that allow you to configure a
+cluster context and execute methods from this gem. Every command sent to
+the server is stored in `mcp_state.json` so the state can be recreated
+later.
+
+Start the server with:
+
+```bash
+bundle exec ruby bin/mcp_server
+```
+
+Send JSON requests to `POST /context` to configure the connection and
+`POST /command` with the method name and arguments to run operations.
+
 ## Development
 
 After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake test` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.

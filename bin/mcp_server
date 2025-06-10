@@ -1,0 +1,89 @@
+#!/usr/bin/env ruby
+require 'rails'
+require 'action_controller/railtie'
+require 'json'
+require 'fileutils'
+require 'ruby-kubernetes-controller'
+
+class MCPApp < Rails::Application
+  config.load_defaults 7.0 if respond_to?(:load_defaults)
+  config.eager_load = false
+  config.api_only = true
+  config.client = nil
+end
+
+class ApplicationController < ActionController::API
+end
+
+class MCPController < ApplicationController
+  STATE_FILE = File.expand_path('../mcp_state.json', __dir__)
+
+  before_action :ensure_client, only: :command
+
+  def set_context
+    data = JSON.parse(request.body.read)
+    endpoint = data['endpoint']
+    return render json: { error: 'endpoint required' }, status: :bad_request unless endpoint
+
+    token = data['token'] || ''
+    ssl   = data.fetch('ssl', true)
+    yaml  = data.fetch('yaml', false)
+
+    Rails.application.config.client = RubyKubernetesController::Client.new(endpoint, token, ssl, yaml)
+    render json: { status: 'context set' }
+  end
+
+  def command
+    client = Rails.application.config.client
+    data = JSON.parse(request.body.read)
+    method = data['method']
+    return render json: { error: 'method required' }, status: :bad_request unless method
+    args = data['args'] || []
+
+    unless client.respond_to?(method)
+      return render json: { error: 'invalid method' }, status: :bad_request
+    end
+
+    result = client.public_send(method, *args)
+
+    state = load_state
+    state['commands'] << { method: method, args: args }
+    save_state(state)
+
+    render json: { result: result }
+  end
+
+  def state
+    render json: load_state
+  end
+
+  private
+
+  def ensure_client
+    unless Rails.application.config.client
+      render json: { error: 'context not set' }, status: :bad_request
+    end
+  end
+
+  def load_state
+    if File.exist?(STATE_FILE)
+      JSON.parse(File.read(STATE_FILE))
+    else
+      { 'commands' => [] }
+    end
+  end
+
+  def save_state(state)
+    File.write(STATE_FILE, JSON.pretty_generate(state))
+  end
+end
+
+MCPApp.routes.draw do
+  post '/context', to: 'mcp#set_context'
+  post '/command', to: 'mcp#command'
+  get '/state', to: 'mcp#state'
+end
+
+MCPApp.initialize!
+
+Rack::Server.start app: MCPApp, Host: '0.0.0.0', Port: 4567 if __FILE__ == $PROGRAM_NAME
