@@ -10,3 +10,5 @@
 ruby-kubernetes-controller-*.gem
 Gemfile.lock
 .DS_Store
+
+test/reports/
